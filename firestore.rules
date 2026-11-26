@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isMember(data) {
+      return signedIn() &&
+        (data.host.uid == request.auth.uid ||
+         (data.guest != null && data.guest.uid == request.auth.uid));
+    }
+    function validProfile(profile) {
+      return profile is map &&
+        profile.uid == request.auth.uid &&
+        profile.name is string &&
+        profile.name.size() > 0 &&
+        profile.name.size() <= 12 &&
+        profile.mbti is string &&
+        profile.mbti in [
+          'ISTJ','ISFJ','INFJ','INTJ','ISTP','ISFP','INFP','INTP',
+          'ESTP','ESFP','ENFP','ENTP','ESTJ','ESFJ','ENFJ','ENTJ'
+        ];
+    }
+    match /rooms/{roomId} {
+      allow create: if signedIn()
+        && request.resource.data.host.uid == request.auth.uid
+        && validProfile(request.resource.data.host)
+        && request.resource.data.code == roomId
+        && request.resource.data.status == 'waiting'
+        && request.resource.data.guest == null;
+
+      // A waiting room can be read by a signed-in user who has its unguessable invite code.
+      // Once a guest joins, only the two members can read it.
+      allow read: if isMember(resource.data) ||
+        (signedIn() && resource.data.status == 'waiting');
+
+      allow update: if isMember(resource.data)
+        && request.resource.data.code == resource.data.code
+        && request.resource.data.host == resource.data.host
+        && request.resource.data.guest == resource.data.guest
+        || (
+          signedIn()
+          && resource.data.status == 'waiting'
+          && resource.data.guest == null
+          && request.resource.data.guest != null
+          && validProfile(request.resource.data.guest)
+          && request.resource.data.host == resource.data.host
+          && request.resource.data.code == resource.data.code
+          && request.resource.data.status == 'ready'
+        );
+
+      allow delete: if false;
+    }
+  }
+}

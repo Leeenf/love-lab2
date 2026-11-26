@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101326">
+<title>LOVE LAB | The Science of Us</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
+<header class="topbar">
+  <a class="brand" href="#" id="homeBrand"><span class="brand-mark">♥</span><span>LOVE<span class="pink">LAB</span><small>THE SCIENCE OF US</small></span></a>
+  <div class="top-status"><span class="live-dot"></span><span id="connectionLabel">LOCAL DEMO MODE</span></div>
+</header>
+<main id="app" class="shell">
+  <section id="hero" class="hero panel">
+    <div class="eyebrow"><span class="pulse"></span> COUPLE PSYCHOLOGY EXPERIMENT · SEASON 01</div>
+    <div class="hero-grid">
+      <div>
+        <p class="kicker">TWO MINDS. ONE EXPERIMENT.</p>
+        <h1>우리의 마음을<br><em>연구할 시간.</em></h1>
+        <p class="lead">서로의 선택을 예측하고, 숨겨진 취향을 발견하고,<br>우리만의 연애 데이터를 완성해 보세요.</p>
+        <div class="hero-actions">
+          <button class="btn primary" id="createRoomBtn">새 연구실 만들기 <span>↗</span></button>
+          <button class="btn secondary" id="joinRoomBtn">초대 코드로 입장</button>
+        </div>
+        <p class="micro">2인 전용 · 약 25~35분 · 모바일 최적화</p>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+        <div class="heart-core">♥</div><div class="orbit-label label-top">EMOTION DATA</div><div class="orbit-label label-bottom">SYNC: 02 USERS</div>
+        <span class="spark s1">✦</span><span class="spark s2">✧</span><span class="spark s3">✦</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="setup" class="panel hidden">
+    <div class="section-head"><div class="eyebrow">01 / RESEARCHER REGISTRATION</div><h2>연구원 프로필 등록</h2><p>두 사람의 정보를 입력해 연구실을 개설하세요.</p></div>
+    <div class="form-grid">
+      <label>내 닉네임<input id="hostName" maxlength="12" placeholder="예: 지니"></label>
+      <label>내 MBTI<select id="hostMbti"></select></label>
+      <label>연애 기간<select id="duration"><option value="3개월 미만">3개월 미만</option><option value="3~6개월">3~6개월</option><option value="6개월~1년">6개월~1년</option><option value="1~3년" selected>1~3년</option><option value="3년 이상">3년 이상</option></select></label>
+    </div>
+    <div class="button-row"><button class="btn primary" id="confirmCreate">연구실 생성하기</button><button class="btn ghost" data-back>뒤로</button></div>
+  </section>
+
+  <section id="join" class="panel hidden">
+    <div class="section-head"><div class="eyebrow">ACCESS THE LAB</div><h2>초대 코드 입력</h2><p>상대방이 공유한 6자리 코드를 입력하세요.</p></div>
+    <label>초대 코드<input id="joinCode" class="code-input" maxlength="6" placeholder="예: A8K2QZ" autocomplete="off"></label>
+    <div class="form-grid single">
+      <label>내 닉네임<input id="guestName" maxlength="12" placeholder="예: 두부"></label>
+      <label>내 MBTI<select id="guestMbti"></select></label>
+    </div>
+    <div class="button-row"><button class="btn primary" id="confirmJoin">연구실 입장하기</button><button class="btn ghost" data-back>뒤로</button></div>
+  </section>
+
+  <section id="waiting" class="panel hidden">
+    <div class="eyebrow">LAB CONNECTION ESTABLISHED</div><h2>두 사람의 접속을 기다리는 중</h2>
+    <p class="muted">상대방에게 아래 초대 코드를 공유하세요.</p>
+    <div class="invite-code" id="inviteCode">------</div>
+    <button class="btn secondary" id="copyCode">코드 복사</button>
+    <div class="waiting-orbit"><div>♥</div></div>
+    <p id="waitingText" class="muted">상대방이 입장하면 실험이 시작됩니다.</p>
+    <button class="btn primary hidden" id="startLabBtn">실험 시작하기</button>
+  </section>
+
+  <section id="dashboard" class="hidden">
+    <div class="dash-head panel">
+      <div><div class="eyebrow">ACTIVE RESEARCH ROOM</div><h2 id="roomTitle">우리의 연구실</h2><p id="roomSub" class="muted"></p></div>
+      <div class="room-code"><small>ROOM CODE</small><strong id="dashCode"></strong></div>
+    </div>
+    <div class="researchers" id="researchers"></div>
+    <div class="progress-panel panel">
+      <div class="progress-top"><div><span class="eyebrow">EXPERIMENT PROGRESS</span><h3>연구 진행 현황</h3></div><strong id="progressText">0 / 7</strong></div>
+      <div class="progress-track"><span id="progressBar"></span></div>
+    </div>
+    <div class="lab-grid" id="labGrid"></div>
+    <div class="button-row"><button class="btn secondary" id="resumeBtn">현재 실험 이어하기</button><button class="btn ghost" id="leaveBtn">연구실 나가기</button></div>
+  </section>
+
+  <section id="experiment" class="panel hidden">
+    <div class="experiment-top"><button class="icon-btn" id="dashBack" aria-label="목록으로">←</button><div><div class="eyebrow" id="expEyebrow">LAB 01</div><h2 id="expTitle">텔레파시 실험</h2></div><span class="step-count" id="stepCount">01 / 10</span></div>
+    <div class="exp-progress"><span id="expProgress"></span></div>
+    <div id="experimentContent"></div>
+  </section>
+
+  <section id="result" class="panel hidden">
+    <div class="eyebrow">FINAL REPORT / DECLASSIFIED</div><h2>우리의 마음 연구 보고서</h2>
+    <div id="reportContent"></div>
+    <div class="button-row"><button class="btn primary" id="shareReport">결과 요약 복사하기</button><button class="btn secondary" id="backDashboard">연구실로 돌아가기</button></div>
+  </section>
+  <div id="toast" class="toast" role="status"></div>
+</main>
+<footer>LOVE LAB <span>·</span> A playful experiment, not a clinical assessment.</footer>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
