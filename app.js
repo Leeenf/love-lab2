@@ -1,9 +1,8 @@
-// LOVE LAB v1.0 — Firebase modular SDK (CDN)
+// LOVE LAB v1.1 — 각자 독립 진행 버전
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, serverTimestamp, runTransaction } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
-/* 1) Firebase Console에서 발급한 설정값으로 교체하세요. */
 const firebaseConfig = {
   apiKey: "AIzaSyBqRfF4WIBKIeZ33B_LEm2pS6sW2aWKutw",
   authDomain: "love-lab-c43a9.firebaseapp.com",
@@ -12,17 +11,18 @@ const firebaseConfig = {
   messagingSenderId: "345852927698",
   appId: "1:345852927698:web:8238d6c61d33c0285dd70b",
   measurementId: "G-K4EL0E1LLH"
-
 };
+
 const FIREBASE_READY = !Object.values(firebaseConfig).some(v => String(v).startsWith("YOUR_"));
 let db = null, auth = null, user = null, roomUnsub = null;
 let roomId = null, roomData = null, myRole = null, myProfile = null;
-let activeLab = null, currentQuestion = 0, selectedAnswer = null;
-let localDemo = false;
+let activeLab = null, currentQuestion = 0, localDemo = false;
+let savingAnswer = false;
 
 const $ = id => document.getElementById(id);
 const screens = ["hero","setup","join","waiting","dashboard","experiment","result"];
 const MBTIS = ["ISTJ","ISFJ","INFJ","INTJ","ISTP","ISFP","INFP","INTP","ESTP","ESFP","ENFP","ENTP","ESTJ","ESFJ","ENFJ","ENTJ"];
+
 const LABS = [
  {id:"telepathy",no:"LAB 01",title:"텔레파시 실험",desc:"상대방의 선택을 얼마나 잘 예측할까?",count:10},
  {id:"manual",no:"LAB 02",title:"애인 사용 설명서",desc:"상대방의 취향과 마음을 얼마나 알고 있을까?",count:8},
@@ -32,6 +32,7 @@ const LABS = [
  {id:"cipher",no:"LAB 06",title:"사랑의 암호 해독",desc:"상대방의 마음속 단서를 찾아라",count:3},
  {id:"report",no:"FINAL",title:"커플 연구 보고서",desc:"모든 실험 데이터를 종합해 결과 확인",count:1}
 ];
+
 const BANK = {
  telepathy:[
   ["갑자기 주말 하루가 통째로 비었다면 가장 하고 싶은 것은?",["근교 여행 떠나기","집에서 푹 쉬기","새로운 맛집 탐방","전시·공연·액티비티"]],
@@ -87,194 +88,584 @@ const BANK = {
   ["CASE 05 · 커플 사진을 올리지 않는 애인","한 사람은 SNS에 커플 사진을 올리고 싶지만 다른 사람은 공개를 원하지 않는다.",["유죄! 연애 사실을 숨기는 것 같다","서로의 공개 범위를 합의해야 한다","무죄! SNS 공개는 개인의 선택이다"]]
  ],
  cipher:[
-  ["상대방이 가장 좋아하는 데이트 방식은 무엇일까?", "manual",0],
-  ["상대방이 기분이 안 좋을 때 가장 원하는 행동은?", "manual",0],
-  ["상대방이 가장 듣고 싶은 말은 무엇일까?", "manual",3]
+  ["상대방이 가장 좋아하는 데이트 방식은 무엇일까?","manual",0],
+  ["상대방이 기분이 안 좋을 때 가장 원하는 행동은?","manual",0],
+  ["상대방이 가장 듣고 싶은 말은 무엇일까?","manual",3]
  ]
 };
+
 const MBTI_DESC = {
  ISTJ:"차분하고 신뢰를 중요하게 여기는 현실적인 연구원",ISFJ:"작은 배려와 꾸준한 관심을 소중히 여기는 연구원",INFJ:"깊은 대화와 관계의 의미를 중요하게 여기는 연구원",INTJ:"생각을 정리하고 합리적인 해결책을 찾는 연구원",
  ISTP:"상황에 맞게 유연하게 움직이는 실용적인 연구원",ISFP:"현재의 감정과 편안한 분위기를 소중히 여기는 연구원",INFP:"진심과 가치관의 교감을 중요하게 여기는 연구원",INTP:"호기심을 바탕으로 다양한 가능성을 탐색하는 연구원",
  ESTP:"함께 경험하고 행동하며 즐거움을 찾는 연구원",ESFP:"즐거운 순간과 생생한 교류를 좋아하는 연구원",ENFP:"새로운 경험과 풍부한 대화를 즐기는 연구원",ENTP:"재치 있는 질문과 색다른 관점을 즐기는 연구원",
  ESTJ:"명확한 계획과 실행을 중요하게 여기는 연구원",ESFJ:"함께하는 분위기와 서로의 만족을 살피는 연구원",ENFJ:"상대의 감정을 세심하게 살피는 연구원",ENTJ:"목표를 세우고 함께 추진하는 것을 좋아하는 연구원"
 };
-function showScreen(id){screens.forEach(s=>$(s).classList.toggle("hidden",s!==id));window.scrollTo({top:0,behavior:"smooth"});}
-function toast(msg){const t=$("toast");t.textContent=msg;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2400);}
-function fillMbti(){["hostMbti","guestMbti"].forEach(id=>$(id).innerHTML=MBTIS.map(m=>`<option value="${m}">${m} · ${MBTI_DESC[m]}</option>`).join(""));}
-function makeCode(){const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let s="";for(let i=0;i<6;i++)s+=chars[Math.floor(Math.random()*chars.length)];return s;}
-function escapeHtml(s=""){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+
+function showScreen(id){
+ screens.forEach(s=>$(s).classList.toggle("hidden",s!==id));
+ window.scrollTo({top:0,behavior:"smooth"});
+}
+function toast(msg){
+ const t=$("toast");t.textContent=msg;t.classList.add("show");
+ setTimeout(()=>t.classList.remove("show"),2400);
+}
+function fillMbti(){
+ ["hostMbti","guestMbti"].forEach(id=>$(id).innerHTML=MBTIS.map(m=>`<option value="${m}">${m} · ${MBTI_DESC[m]}</option>`).join(""));
+}
+function makeCode(){
+ const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let s="";
+ for(let i=0;i<6;i++)s+=chars[Math.floor(Math.random()*chars.length)];
+ return s;
+}
+function escapeHtml(s=""){
+ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
 function roomRef(){return doc(db,"rooms",roomId);}
-function isConfigured(){return FIREBASE_READY && db && auth && user;}
+function isConfigured(){return FIREBASE_READY&&db&&auth&&user;}
+
 async function initFirebase(){
  if(!FIREBASE_READY){$("connectionLabel").textContent="CONFIG REQUIRED · DEMO AVAILABLE";return;}
- try{const app=initializeApp(firebaseConfig);auth=getAuth(app);db=getFirestore(app);const credential=await signInAnonymously(auth);user=credential.user;onAuthStateChanged(auth,u=>{user=u;});$("connectionLabel").textContent="FIREBASE CONNECTED";}
- catch(e){console.error(e);$("connectionLabel").textContent="CONNECTION ERROR";toast("Firebase 연결에 실패했습니다. 설정과 인증을 확인하세요.");}
+ try{
+  const app=initializeApp(firebaseConfig);
+  auth=getAuth(app);db=getFirestore(app);
+  const credential=await signInAnonymously(auth);user=credential.user;
+  onAuthStateChanged(auth,u=>{user=u;});
+  $("connectionLabel").textContent="FIREBASE CONNECTED";
+ }catch(e){
+  console.error(e);$("connectionLabel").textContent="CONNECTION ERROR";
+  toast("Firebase 연결에 실패했습니다. 설정과 인증을 확인하세요.");
+ }
 }
-function localRoom(){return {code:"DEMO42",status:"waiting",host:{uid:"localA",name:"나",mbti:"ENFP"},guest:null,answers:{},completed:[],createdAt:Date.now(),duration:"1~3년"};}
+
+function localRoom(){
+ return {
+  code:"DEMO42",status:"waiting",
+  host:{uid:"localA",name:"나",mbti:"ENFP"},
+  guest:null,answers:{},completed:[],
+  completedByRole:{host:[],guest:[]},
+  createdAt:Date.now(),duration:"1~3년"
+ };
+}
+
 function listenRoom(){
  if(roomUnsub)roomUnsub();
  if(localDemo){renderRoom();return;}
- roomUnsub=onSnapshot(roomRef(),snap=>{if(!snap.exists()){toast("연구실을 찾을 수 없습니다.");return;}roomData=snap.data();renderRoom();},err=>{console.error(err);toast("실시간 연결 오류: Firestore 규칙을 확인하세요.");});
+ roomUnsub=onSnapshot(roomRef(),snap=>{
+  if(!snap.exists()){toast("연구실을 찾을 수 없습니다.");return;}
+  roomData=snap.data();
+
+  // 실험 중에는 상대방의 응답으로 내 화면을 바꾸지 않음
+  if(roomData.status==="active"||roomData.status==="complete"){
+   const experimentVisible=!$("experiment").classList.contains("hidden");
+   const resultVisible=!$("result").classList.contains("hidden");
+   if(!experimentVisible&&!resultVisible){
+    showScreen("dashboard");
+    renderDashboard();
+   }
+  }else{
+   renderRoom();
+  }
+ },err=>{
+  console.error(err);toast("실시간 연결 오류: Firestore 규칙을 확인하세요.");
+ });
 }
+
 async function createRoom(){
  const name=$("hostName").value.trim(),mbti=$("hostMbti").value;
  if(!name){toast("닉네임을 입력해 주세요.");return;}
  myProfile={name,mbti};myRole="host";
- if(!isConfigured()){localDemo=true;roomId="DEMO42";roomData=localRoom();roomData.host={uid:"localA",name,mbti};showScreen("waiting");$("inviteCode").textContent=roomData.code;$("waitingText").textContent="데모 모드입니다. 실제 2인 연결은 Firebase 설정 후 이용할 수 있어요.";return;}
+
+ if(!isConfigured()){
+  localDemo=true;roomId="DEMO42";roomData=localRoom();
+  roomData.host={uid:"localA",name,mbti};
+  showScreen("waiting");$("inviteCode").textContent=roomData.code;
+  $("waitingText").textContent="데모 모드입니다. 실제 2인 연결은 Firebase 설정 후 이용할 수 있어요.";
+  return;
+ }
+
  try{
   let code=makeCode(),ref;
-  for(let i=0;i<8;i++){ref=doc(db,"rooms",code);const existing=await getDoc(ref);if(!existing.exists())break;code=makeCode();}
-  roomId=code;const data={code,status:"waiting",host:{uid:user.uid,...myProfile},guest:null,answers:{},completed:[],currentLab:0,duration:$("duration").value,createdAt:serverTimestamp(),expiresAt:Date.now()+24*60*60*1000};
-  await setDoc(ref,data);roomData=data;showScreen("waiting");$("inviteCode").textContent=code;listenRoom();
- }catch(e){console.error(e);toast("연구실 생성 실패: "+e.message);}
+  for(let i=0;i<8;i++){
+   ref=doc(db,"rooms",code);
+   const existing=await getDoc(ref);
+   if(!existing.exists())break;
+   code=makeCode();
+  }
+  roomId=code;
+  const data={
+   code,status:"waiting",
+   host:{uid:user.uid,...myProfile},
+   guest:null,answers:{},completed:[],
+   completedByRole:{host:[],guest:[]},
+   currentLab:0,duration:$("duration").value,
+   createdAt:serverTimestamp(),
+   expiresAt:Date.now()+24*60*60*1000
+  };
+  await setDoc(ref,data);
+  roomData=data;
+  showScreen("waiting");
+  $("inviteCode").textContent=code;
+  listenRoom();
+ }catch(e){
+  console.error(e);toast("연구실 생성 실패: "+e.message);
+ }
 }
+
 async function joinRoom(){
- const code=$("joinCode").value.trim().toUpperCase(),name=$("guestName").value.trim(),mbti=$("guestMbti").value;
+ const code=$("joinCode").value.trim().toUpperCase();
+ const name=$("guestName").value.trim(),mbti=$("guestMbti").value;
  if(!/^[A-HJ-NP-Z2-9]{6}$/.test(code)){toast("초대 코드 6자리를 확인해 주세요.");return;}
  if(!name){toast("닉네임을 입력해 주세요.");return;}
  myProfile={name,mbti};myRole="guest";
- if(!isConfigured()){toast("실제 입장에는 Firebase 설정이 필요합니다. 현재는 데모 모드로 실행할 수 있어요.");return;}
+ if(!isConfigured()){toast("실제 입장에는 Firebase 설정이 필요합니다.");return;}
+
  try{
   roomId=code;const ref=roomRef();
-  await runTransaction(db,async tx=>{const snap=await tx.get(ref);if(!snap.exists())throw new Error("초대 코드를 찾을 수 없습니다.");const d=snap.data();if(d.guest)throw new Error("이미 두 명이 참여 중인 연구실입니다.");if(d.status!=="waiting")throw new Error("이미 시작된 연구실입니다.");tx.update(ref,{guest:{uid:user.uid,...myProfile},status:"ready"});});
+  await runTransaction(db,async tx=>{
+   const snap=await tx.get(ref);
+   if(!snap.exists())throw new Error("초대 코드를 찾을 수 없습니다.");
+   const d=snap.data();
+   if(d.guest)throw new Error("이미 두 명이 참여 중인 연구실입니다.");
+   if(d.status!=="waiting")throw new Error("이미 시작된 연구실입니다.");
+   tx.update(ref,{
+    guest:{uid:user.uid,...myProfile},
+    status:"ready",
+    completedByRole:d.completedByRole||{host:[],guest:[]}
+   });
+  });
   showScreen("waiting");$("inviteCode").textContent=code;listenRoom();
- }catch(e){console.error(e);toast(e.message||"입장에 실패했습니다.");}
+ }catch(e){
+  console.error(e);toast(e.message||"입장에 실패했습니다.");
+ }
 }
+
 function renderRoom(){
  if(!roomData)return;
  $("inviteCode").textContent=roomData.code||roomId;
  const guest=roomData.guest;
- $("waitingText").textContent=guest?`${guest.name} 연구원 접속 완료! 연구를 시작할 수 있습니다.`:"상대방이 입장하면 실험이 시작됩니다.";
+ $("waitingText").textContent=guest
+  ?`${guest.name} 연구원 접속 완료! 연구를 시작할 수 있습니다.`
+  :"상대방이 입장하면 실험이 시작됩니다.";
  $("startLabBtn").classList.toggle("hidden",!(myRole==="host"&&guest&&roomData.status!=="active"));
- if(roomData.status==="active"||roomData.status==="complete"){showScreen("dashboard");renderDashboard();}
+ if(roomData.status==="active"||roomData.status==="complete"){
+  showScreen("dashboard");renderDashboard();
+ }
 }
+
 async function startLab(){
- if(localDemo){roomData.status="active";roomData.guest={uid:"localB",name:"상대방",mbti:"ISTP"};renderDashboard();showScreen("dashboard");return;}
- await updateDoc(roomRef(),{status:"active"});showScreen("dashboard");
+ if(localDemo){
+  roomData.status="active";
+  roomData.guest={uid:"localB",name:"상대방",mbti:"ISTP"};
+  renderDashboard();showScreen("dashboard");return;
+ }
+ try{
+  await updateDoc(roomRef(),{status:"active"});
+  showScreen("dashboard");renderDashboard();
+ }catch(e){console.error(e);toast("실험을 시작하지 못했습니다: "+e.message);}
 }
+
+function getMyCompleted(){
+ return roomData?.completedByRole?.[myRole]||[];
+}
+function getBothCompleted(){
+ const c=roomData?.completedByRole||{};
+ return LABS.filter(l=>l.id!=="report").every(l=>
+  (c.host||[]).includes(l.id)&&(c.guest||[]).includes(l.id)
+ );
+}
+
 function renderDashboard(){
  const p=[roomData.host,roomData.guest].filter(Boolean);
  $("roomTitle").textContent=`${p.map(x=>x.name).join(" & ")}의 연구실`;
- $("roomSub").textContent=`${roomData.duration||"연애 실험"} · 두 사람의 응답을 분석하고 있어요.`;
+ $("roomSub").textContent=`${roomData.duration||"연애 실험"} · 각자 자유롭게 실험을 진행하세요.`;
  $("dashCode").textContent=roomData.code;
- $("researchers").innerHTML=p.map((x,i)=>`<div class="researcher"><div class="avatar">${escapeHtml(x.name.slice(0,1))}</div><div><strong>${escapeHtml(x.name)}</strong><small>${x.mbti} · ${escapeHtml(MBTI_DESC[x.mbti]||"연구원")}</small></div><span class="online">● ONLINE</span></div>`).join("");
- const completed=roomData.completed||[];$("progressText").textContent=`${completed.length} / 7`;$("progressBar").style.width=(completed.length/7*100)+"%";
- $("labGrid").innerHTML=LABS.map((l,i)=>{const done=completed.includes(l.id),unlocked=i===0||completed.includes(LABS[i-1].id);return `<button class="lab-card" data-lab="${l.id}" ${(!unlocked&&!done)?"disabled":""}><span class="state">${done?"✓ COMPLETE":unlocked?"UNLOCKED":"LOCKED"}</span><span class="lab-no">${l.no}</span><strong>${l.title}</strong><small>${l.desc}</small></button>`}).join("");
- document.querySelectorAll("[data-lab]").forEach(b=>b.addEventListener("click",()=>openLab(b.dataset.lab)));
- $("resumeBtn").onclick=()=>{const next=LABS.find(l=>!completed.includes(l.id))||LABS[6];openLab(next.id);};
+ $("researchers").innerHTML=p.map(x=>`
+  <div class="researcher">
+   <div class="avatar">${escapeHtml(x.name.slice(0,1))}</div>
+   <div><strong>${escapeHtml(x.name)}</strong><small>${x.mbti} · ${escapeHtml(MBTI_DESC[x.mbti]||"연구원")}</small></div>
+   <span class="online">● ONLINE</span>
+  </div>`).join("");
+
+ const completed=getMyCompleted();
+ $("progressText").textContent=`${completed.length} / 6`;
+ $("progressBar").style.width=(completed.length/6*100)+"%";
+
+ $("labGrid").innerHTML=LABS.map((l,i)=>{
+  const done=completed.includes(l.id);
+  const unlocked=i===0||completed.includes(LABS[i-1].id);
+  const reportReady=l.id==="report"&&getBothCompleted();
+  const canOpen=l.id==="report"?reportReady:(unlocked||done);
+  const state=l.id==="report"
+   ?(reportReady?"UNLOCKED": "WAITING FOR BOTH")
+   :(done?"✓ COMPLETE":unlocked?"UNLOCKED":"LOCKED");
+
+  return `<button class="lab-card" data-lab="${l.id}" ${!canOpen?"disabled":""}>
+   <span class="state">${state}</span>
+   <span class="lab-no">${l.no}</span>
+   <strong>${l.title}</strong>
+   <small>${l.desc}</small>
+  </button>`;
+ }).join("");
+
+ document.querySelectorAll("[data-lab]").forEach(b=>
+  b.addEventListener("click",()=>openLab(b.dataset.lab))
+ );
+
+ $("resumeBtn").onclick=()=>{
+  const next=LABS.find(l=>l.id!=="report"&&!completed.includes(l.id));
+  if(next)openLab(next.id);
+  else if(getBothCompleted())openLab("report");
+  else toast("내 실험은 모두 완료했어요! 상대방의 완료를 기다려 주세요.");
+ };
 }
-function answersFor(lab,q){return roomData?.answers?.[lab]?.[q]||{};}
+
+function answersFor(lab,q){
+ return roomData?.answers?.[lab]?.[q]||{};
+}
+
 function questionFor(lab,index){
- if(lab==="cipher"){const [prompt,source,sourceIndex]=BANK.cipher[index];const peer=roomData?.[source]?.[sourceIndex]||null;return {q:prompt,options:["첫 번째 선택지","두 번째 선택지","세 번째 선택지","네 번째 선택지"],type:"cipher"};}
- if(lab==="court"){const [title,desc,opts]=BANK.court[index];return {q:`${title}\n${desc}`,options:opts,type:"court"};}
- const arr=BANK[lab]||[];return arr[index%arr.length];
+ if(lab==="cipher"){
+  const [prompt]=BANK.cipher[index];
+  return {q:prompt,options:["첫 번째 선택지","두 번째 선택지","세 번째 선택지","네 번째 선택지"],type:"cipher"};
+ }
+ if(lab==="court"){
+  const [title,desc,opts]=BANK.court[index];
+  return {q:`${title}\n${desc}`,options:opts,type:"court"};
+ }
+ const arr=BANK[lab]||[];
+ const item=arr[index%arr.length];
+ if(lab==="scenario")return {q:item[0],options:item[1],extra:item[2]};
+ if(lab==="balance")return {q:"어느 쪽을 더 선호하나요?",options:item};
+ return {q:item[0],options:item[1]};
 }
-function getCount(lab){return LABS.find(l=>l.id===lab)?.count||1;}
+
+function getCount(lab){
+ return LABS.find(l=>l.id===lab)?.count||1;
+}
+
 function openLab(lab){
- activeLab=lab;currentQuestion=0;selectedAnswer=null;
- if(lab==="report"){renderReport();showScreen("result");return;}
+ activeLab=lab;
+ if(lab==="report"){
+  if(!getBothCompleted()){
+   toast("두 사람 모두 모든 실험을 완료하면 결과를 확인할 수 있어요.");
+   return;
+  }
+  renderReport();showScreen("result");return;
+ }
+
+ const completed=getMyCompleted();
+ if(!completed.includes(lab)){
+  const index=LABS.findIndex(l=>l.id===lab);
+  if(index>0&&!completed.includes(LABS[index-1].id)){
+   toast("이전 실험을 먼저 완료해 주세요.");return;
+  }
+ }
+
+ // 각자 저장된 응답을 확인해 이어서 진행
+ currentQuestion=0;
+ while(currentQuestion<getCount(lab)){
+  const mine=answersFor(lab,currentQuestion)[myRole]||{};
+  if(lab==="telepathy"||lab==="manual"){
+   if(mine.guess===undefined||mine.actual===undefined)break;
+  }else{
+   if(mine.answer===undefined)break;
+  }
+  currentQuestion++;
+ }
+ if(currentQuestion>=getCount(lab)){
+  toast("이 실험은 이미 완료했어요.");
+  showScreen("dashboard");renderDashboard();return;
+ }
  showScreen("experiment");renderQuestion();
 }
+
 function renderQuestion(){
- const lab=LABS.find(l=>l.id===activeLab),count=getCount(activeLab);
- $("expEyebrow").textContent=lab.no;$("expTitle").textContent=lab.title;
+ const lab=LABS.find(l=>l.id===activeLab);
+ const count=getCount(activeLab);
+ $("expEyebrow").textContent=lab.no;
+ $("expTitle").textContent=lab.title;
  $("stepCount").textContent=`${String(currentQuestion+1).padStart(2,"0")} / ${String(count).padStart(2,"0")}`;
  $("expProgress").style.width=((currentQuestion/count)*100)+"%";
- const q=questionFor(activeLab,currentQuestion);const prior=answersFor(activeLab,currentQuestion);
- const mine=prior[myRole];const otherRole=myRole==="host"?"guest":"host";
+
+ const q=questionFor(activeLab,currentQuestion);
+ const prior=answersFor(activeLab,currentQuestion);
+ const mine=prior[myRole]||{};
  const content=$("experimentContent");
- if(activeLab==="telepathy"||activeLab==="manual"||activeLab==="scenario"||activeLab==="balance"||activeLab==="court"){
+
+ if(["telepathy","manual","scenario","balance","court"].includes(activeLab)){
   const isPredict=activeLab==="telepathy"||activeLab==="manual";
-  let prompt=q.q||q[0],opts=q.options||q[1],extra=q[2]||"";
-  if(isPredict&&mine?.guess===undefined){
-   content.innerHTML=`<div class="question-card"><div class="question-tag">PREDICTION ROUND</div><h3>${escapeHtml(prompt)}</h3><p class="hint">상대방이 선택할 것 같은 답을 먼저 예측하세요.</p><div class="options">${opts.map((o,i)=>`<button class="option" data-choice="${i}"><span class="letter">${String.fromCharCode(65+i)}</span>${escapeHtml(o)}</button>`).join("")}</div></div>`;
-   content.querySelectorAll("[data-choice]").forEach(b=>b.onclick=()=>submitAnswer(Number(b.dataset.choice),"guess"));
-  } else if(isPredict&&mine?.actual===undefined){
-   content.innerHTML=`<div class="question-card"><div class="question-tag">YOUR REAL ANSWER</div><h3>${escapeHtml(prompt)}</h3><p class="hint">이번에는 본인의 실제 답을 선택하세요.</p><div class="options">${opts.map((o,i)=>`<button class="option" data-choice="${i}"><span class="letter">${String.fromCharCode(65+i)}</span>${escapeHtml(o)}</button>`).join("")}</div></div>`;
-   content.querySelectorAll("[data-choice]").forEach(b=>b.onclick=()=>submitAnswer(Number(b.dataset.choice),"actual"));
-  } else if(!isPredict&&!mine){
-   content.innerHTML=`<div class="question-card"><div class="question-tag">${lab.no} · QUESTION ${currentQuestion+1}</div><h3>${escapeHtml(prompt).replace("\n","<br>")}</h3>${extra?`<p class="hint">${escapeHtml(extra)}</p>`:""}<div class="options">${opts.map((o,i)=>`<button class="option" data-choice="${i}"><span class="letter">${String.fromCharCode(65+i)}</span>${escapeHtml(o)}</button>`).join("")}</div></div>`;
-   content.querySelectorAll("[data-choice]").forEach(b=>b.onclick=()=>submitAnswer(Number(b.dataset.choice),"answer"));
-  } else {
-   renderWaitingOrReveal(q,prior,opts);
+  const prompt=q.q,opts=q.options,extra=q.extra||"";
+
+  let kind="answer",tag=`${lab.no} · QUESTION ${currentQuestion+1}`;
+  let hint="나의 답변을 선택해 주세요.";
+
+  if(isPredict&&mine.guess===undefined){
+   kind="guess";tag="PREDICTION ROUND";
+   hint="상대방이 선택할 것 같은 답을 먼저 예측하세요.";
+  }else if(isPredict&&mine.actual===undefined){
+   kind="actual";tag="YOUR REAL ANSWER";
+   hint="이번에는 상대방을 생각하지 말고 나의 실제 답을 선택하세요.";
   }
- } else {
-  const source=roomData?.answers?.manual||{};
-  const prompt=q.q;
-  content.innerHTML=`<div class="question-card"><div class="question-tag">FINAL CIPHER · CLUE ${currentQuestion+1}</div><h3>${escapeHtml(prompt)}</h3><p class="hint">상대방이 앞선 실험에서 입력한 답변을 떠올려 보세요. 정답 선택은 아직 간단한 추리형으로 진행됩니다.</p><div class="options">${["상대방의 첫 번째 선택","상대방의 두 번째 선택","상대방의 세 번째 선택","상대방의 네 번째 선택"].map((o,i)=>`<button class="option" data-choice="${i}"><span class="letter">${String.fromCharCode(65+i)}</span>${o}</button>`).join("")}</div></div>`;
-  content.querySelectorAll("[data-choice]").forEach(b=>b.onclick=()=>submitAnswer(Number(b.dataset.choice),"answer"));
- }
-}
-function renderWaitingOrReveal(q,prior,opts){
- const content=$("experimentContent"),otherRole=myRole==="host"?"guest":"host",mine=prior[myRole],other=prior[otherRole];
- if(mine&&other){
-  const myVal=mine.actual??mine.answer??mine.guess,otherVal=other.actual??other.answer??other.guess;
-  content.innerHTML=`<div class="question-card"><div class="question-tag">RESULT REVEALED</div><h3>두 사람의 선택을 공개합니다.</h3><div class="reveal-grid"><div class="reveal"><small>MY ANSWER</small><strong>${escapeHtml(opts?.[myVal]??"응답")}</strong></div><div class="reveal"><small>PARTNER</small><strong>${escapeHtml(opts?.[otherVal]??"응답")}</strong></div></div><p class="hint">${myVal===otherVal?"✨ 같은 선택이에요! 마음이 통했네요.":"서로 다른 선택이에요. 어떤 생각이었는지 이야기해 보세요."}</p><button class="btn primary" id="nextQuestion">다음 질문</button></div>`;
-  $("nextQuestion").onclick=nextQuestion;
+
+  content.innerHTML=`
+   <div class="question-card">
+    <div class="question-tag">${tag}</div>
+    <h3>${escapeHtml(prompt).replace(/\n/g,"<br>")}</h3>
+    <p class="hint">${hint}</p>
+    ${extra?`<p class="hint">${escapeHtml(extra)}</p>`:""}
+    <div class="options">
+     ${opts.map((o,i)=>`
+      <button class="option" data-choice="${i}">
+       <span class="letter">${String.fromCharCode(65+i)}</span>
+       ${escapeHtml(o)}
+      </button>`).join("")}
+    </div>
+   </div>`;
+
+  content.querySelectorAll("[data-choice]").forEach(b=>
+   b.onclick=()=>submitAnswer(Number(b.dataset.choice),kind)
+  );
  }else{
-  content.innerHTML=`<div class="waiting-inline"><div class="waiting-orbit"><div>♥</div></div><strong>상대방의 응답을 기다리는 중</strong><p>두 사람 모두 응답을 완료하면 결과가 공개됩니다.</p><p class="hint">이 화면을 닫지 않아도 실시간으로 업데이트됩니다.</p></div>`;
+  const prompt=q.q;
+  const opts=q.options;
+  content.innerHTML=`
+   <div class="question-card">
+    <div class="question-tag">FINAL CIPHER · CLUE ${currentQuestion+1}</div>
+    <h3>${escapeHtml(prompt)}</h3>
+    <p class="hint">상대방의 마음속 단서를 떠올려 답을 선택해 보세요.</p>
+    <div class="options">
+     ${opts.map((o,i)=>`
+      <button class="option" data-choice="${i}">
+       <span class="letter">${String.fromCharCode(65+i)}</span>
+       ${escapeHtml(o)}
+      </button>`).join("")}
+    </div>
+   </div>`;
+
+  content.querySelectorAll("[data-choice]").forEach(b=>
+   b.onclick=()=>submitAnswer(Number(b.dataset.choice),"answer")
+  );
  }
 }
+
 async function submitAnswer(value,kind){
- const qkey=String(currentQuestion),path=`answers.${activeLab}.${qkey}.${myRole}`;
+ if(savingAnswer)return;
+ savingAnswer=true;
+
+ const qkey=String(currentQuestion);
  const existing=answersFor(activeLab,currentQuestion);
- let payload={...existing,[myRole]:{...(existing[myRole]||{}),[kind]:value,updatedAt:Date.now()}};
+ const myOld=existing[myRole]||{};
+ const myNew={...myOld,[kind]:value,updatedAt:Date.now()};
+
  if(localDemo){
-  roomData.answers[activeLab]??={};roomData.answers[activeLab][qkey]=payload;
-  // Demo partner response is synthetic and explicitly labelled as a preview.
+  roomData.answers[activeLab]??={};
+  roomData.answers[activeLab][qkey]??={};
+  roomData.answers[activeLab][qkey][myRole]=myNew;
+
+  // 데모 화면에서만 상대방 예시 응답 생성
   if(!roomData.answers[activeLab][qkey].guest&&!roomData.answers[activeLab][qkey].host){
-   roomData.answers[activeLab][qkey].guest={guess:(value+1)%4,actual:(value+1)%4,answer:(value+1)%4,preview:true};
+   roomData.answers[activeLab][qkey].guest={
+    guess:(value+1)%4,actual:(value+1)%4,
+    answer:(value+1)%4,preview:true
+   };
   }
+
+  savingAnswer=false;
+  afterAnswer(kind);
+  return;
+ }
+
+ try{
+  const path=`answers.${activeLab}.${qkey}.${myRole}`;
+  await updateDoc(roomRef(),{[path]:myNew});
+
+  // 저장이 끝나면 내 화면에서만 다음 단계로 이동
+  savingAnswer=false;
+  afterAnswer(kind);
+ }catch(e){
+  console.error(e);
+  savingAnswer=false;
+  toast("응답 저장 실패: "+e.message);
+ }
+}
+
+function afterAnswer(kind){
+ // 예측형 문항은 예측 후 같은 질문에서 실제 답변 진행
+ if((activeLab==="telepathy"||activeLab==="manual")&&kind==="guess"){
   renderQuestion();return;
  }
- try{
-  await updateDoc(roomRef(),{[path]:payload[myRole]});
-  // A listener refreshes the shared state. Keep the user on the same question.
-  toast("응답이 안전하게 저장되었습니다.");
- }catch(e){console.error(e);toast("응답 저장 실패: "+e.message);}
+
+ // 실제 답변 또는 일반 문항 응답 후 즉시 다음 문항
+ nextQuestion();
 }
+
 function nextQuestion(){
  const count=getCount(activeLab);
- if(currentQuestion<count-1){currentQuestion++;renderQuestion();return;}
- completeLab(activeLab);
+ if(currentQuestion<count-1){
+  currentQuestion++;
+  renderQuestion();
+ }else{
+  completeLab(activeLab);
+ }
 }
+
 async function completeLab(lab){
- if(localDemo){roomData.completed=[...new Set([...(roomData.completed||[]),lab])];renderDashboard();showScreen("dashboard");return;}
- try{await runTransaction(db,async tx=>{const snap=await tx.get(roomRef());const d=snap.data();const completed=[...new Set([...(d.completed||[]),lab])];tx.update(roomRef(),{completed});});showScreen("dashboard");}catch(e){console.error(e);toast("실험 완료 처리에 실패했습니다.");}
+ if(localDemo){
+  roomData.completedByRole??={host:[],guest:[]};
+  roomData.completedByRole[myRole]??=[];
+  if(!roomData.completedByRole[myRole].includes(lab)){
+   roomData.completedByRole[myRole].push(lab);
+  }
+  roomData.completed=[...new Set([
+   ...(roomData.completed||[]),
+   lab
+  ])];
+  showScreen("dashboard");renderDashboard();
+  toast("실험 완료! 다음 연구를 진행해 보세요.");
+  return;
+ }
+
+ try{
+  await runTransaction(db,async tx=>{
+   const snap=await tx.get(roomRef());
+   if(!snap.exists())throw new Error("연구실을 찾을 수 없습니다.");
+   const d=snap.data();
+   const completedByRole=d.completedByRole||{host:[],guest:[]};
+   const mine=[...(completedByRole[myRole]||[])];
+   if(!mine.includes(lab))mine.push(lab);
+
+   tx.update(roomRef(),{
+    [`completedByRole.${myRole}`]:mine,
+    completed:[...new Set([...(d.completed||[]),lab])]
+   });
+  });
+  showScreen("dashboard");renderDashboard();
+  toast("실험 완료! 다음 연구를 진행해 보세요.");
+ }catch(e){
+  console.error(e);toast("실험 완료 처리에 실패했습니다: "+e.message);
+ }
 }
-function adaptiveNext(lab,index){
- // v1 adaptive sequencing: use the previous answer to choose the next unused prompt
- // from a topic bucket. The question bank remains deterministic across both clients.
- return Math.min(index+1,getCount(lab)-1);
-}
+
 function renderReport(){
- const all=roomData?.answers||{},host=roomData?.host||{},guest=roomData?.guest||{};
+ const all=roomData?.answers||{};
+ const host=roomData?.host||{},guest=roomData?.guest||{};
  let match=0,total=0,understood=0,underTotal=0,scenarioDiff=0,scenarioTotal=0;
- Object.entries(all.telepathy||{}).forEach(([k,v])=>{if(v.host?.actual!==undefined&&v.guest?.guess!==undefined){total++;if(v.guest.guess===v.host.actual)match++;}if(v.guest?.actual!==undefined&&v.host?.guess!==undefined){total++;if(v.host.guess===v.guest.actual)match++;}});
- Object.entries(all.manual||{}).forEach(([k,v])=>{if(v.host?.actual!==undefined&&v.guest?.guess!==undefined){underTotal++;if(v.guest.guess===v.host.actual)understood++;}if(v.guest?.actual!==undefined&&v.host?.guess!==undefined){underTotal++;if(v.host.guess===v.guest.actual)understood++;}});
- Object.values(all.scenario||{}).forEach(v=>{if(v.host?.answer!==undefined&&v.guest?.answer!==undefined){scenarioTotal++;if(v.host.answer!==v.guest.answer)scenarioDiff++;}});
- Object.values(all.balance||{}).forEach(v=>{if(v.host?.answer!==undefined&&v.guest?.answer!==undefined){total++;if(v.host.answer===v.guest.answer)match++;}});
- const pct=(a,b)=>b?Math.round(a/b*100):0,tele=pct(match,total),know=pct(understood,underTotal),scenario=pct(scenarioDiff,scenarioTotal);
+
+ Object.entries(all.telepathy||{}).forEach(([k,v])=>{
+  if(v.host?.actual!==undefined&&v.guest?.guess!==undefined){
+   total++;if(v.guest.guess===v.host.actual)match++;
+  }
+  if(v.guest?.actual!==undefined&&v.host?.guess!==undefined){
+   total++;if(v.host.guess===v.guest.actual)match++;
+  }
+ });
+
+ Object.entries(all.manual||{}).forEach(([k,v])=>{
+  if(v.host?.actual!==undefined&&v.guest?.guess!==undefined){
+   underTotal++;if(v.guest.guess===v.host.actual)understood++;
+  }
+  if(v.guest?.actual!==undefined&&v.host?.guess!==undefined){
+   underTotal++;if(v.host.guess===v.guest.actual)understood++;
+  }
+ });
+
+ Object.values(all.scenario||{}).forEach(v=>{
+  if(v.host?.answer!==undefined&&v.guest?.answer!==undefined){
+   scenarioTotal++;if(v.host.answer!==v.guest.answer)scenarioDiff++;
+  }
+ });
+
+ Object.values(all.balance||{}).forEach(v=>{
+  if(v.host?.answer!==undefined&&v.guest?.answer!==undefined){
+   total++;if(v.host.answer===v.guest.answer)match++;
+  }
+ });
+
+ const pct=(a,b)=>b?Math.round(a/b*100):0;
+ const tele=pct(match,total),know=pct(understood,underTotal);
+ const scenario=pct(scenarioDiff,scenarioTotal);
  const avg=Math.round((tele+know+(100-scenario))/3);
  const type=avg>=80?"텔레파시 커플":avg>=60?"성장형 커플":avg>=40?"반전 매력 커플":"서로를 알아가는 탐험가";
- $("reportContent").innerHTML=`<div class="report-hero"><div class="eyebrow">COUPLE TYPE IDENTIFIED</div><div class="report-score">${avg}%</div><div class="report-type">${type}</div><p class="muted">${escapeHtml(host.name||"A")} (${host.mbti||"-"}) × ${escapeHtml(guest.name||"B")} (${guest.mbti||"-"})</p></div>
- <div class="insight"><strong>🧠 텔레파시 정확도 · ${tele}%</strong><p>서로의 선택을 예측한 결과예요. 점수가 높을수록 상대방의 취향을 잘 떠올렸다는 의미입니다.</p></div>
- <div class="insight"><strong>💗 상대방 이해도 · ${know}%</strong><p>상대방이 직접 알려준 취향을 얼마나 정확하게 예상했는지 보여줍니다.</p></div>
- <div class="insight"><strong>⚡ 선택 차이 · ${scenario}%</strong><p>상황극에서 서로 다른 반응을 보인 비율입니다. 차이는 갈등의 증거가 아니라 대화를 시작할 단서예요.</p></div>
- <div class="insight"><strong>💌 LOVE LAB 처방전</strong><p>서로 다른 선택이 나온 질문 하나를 골라, 왜 그렇게 생각했는지 3분 동안 이야기해 보세요. 상대방의 답을 바꾸려 하기보다 그 선택에 담긴 이유를 알아가는 것이 이번 실험의 목표입니다.</p></div>
- <p class="hint">이 결과는 게임 응답을 바탕으로 만든 오락용 분석이며 과학적으로 검증된 심리검사나 MBTI 궁합 진단이 아닙니다. 실험에 응답하지 않은 문항은 점수에서 제외됩니다.</p>`;
+
+ $("reportContent").innerHTML=`
+  <div class="report-hero">
+   <div class="eyebrow">COUPLE TYPE IDENTIFIED</div>
+   <div class="report-score">${avg}%</div>
+   <div class="report-type">${type}</div>
+   <p class="muted">${escapeHtml(host.name||"A")} (${host.mbti||"-"}) × ${escapeHtml(guest.name||"B")} (${guest.mbti||"-"})</p>
+  </div>
+  <div class="insight">
+   <strong>🧠 텔레파시 정확도 · ${tele}%</strong>
+   <p>서로의 선택을 예측한 결과예요. 점수가 높을수록 상대방의 취향을 잘 떠올렸다는 의미입니다.</p>
+  </div>
+  <div class="insight">
+   <strong>💗 상대방 이해도 · ${know}%</strong>
+   <p>상대방이 직접 알려준 취향을 얼마나 정확하게 예상했는지 보여줍니다.</p>
+  </div>
+  <div class="insight">
+   <strong>⚡ 선택 차이 · ${scenario}%</strong>
+   <p>상황극에서 서로 다른 반응을 보인 비율입니다. 차이는 갈등의 증거가 아니라 대화를 시작할 단서예요.</p>
+  </div>
+  <div class="insight">
+   <strong>💌 LOVE LAB 처방전</strong>
+   <p>서로 다른 선택이 나온 질문 하나를 골라, 왜 그렇게 생각했는지 3분 동안 이야기해 보세요. 상대방의 답을 바꾸려 하기보다 그 선택에 담긴 이유를 알아가는 것이 이번 실험의 목표입니다.</p>
+  </div>
+  <p class="hint">이 결과는 게임 응답을 바탕으로 만든 오락용 분석이며 과학적으로 검증된 심리검사나 MBTI 궁합 진단이 아닙니다.</p>
+ `;
 }
-function getReportText(){const el=$("reportContent");return "LOVE LAB 커플 연구 보고서\n"+el.innerText.replace(/\n{2,}/g,"\n");}
-function leaveRoom(){if(roomUnsub)roomUnsub();roomUnsub=null;roomId=null;roomData=null;myRole=null;myProfile=null;localDemo=false;showScreen("hero");}
+
+function getReportText(){
+ const el=$("reportContent");
+ return "LOVE LAB 커플 연구 보고서\n"+el.innerText.replace(/\n{2,}/g,"\n");
+}
+
+function leaveRoom(){
+ if(roomUnsub)roomUnsub();
+ roomUnsub=null;roomId=null;roomData=null;
+ myRole=null;myProfile=null;localDemo=false;
+ activeLab=null;currentQuestion=0;
+ showScreen("hero");
+}
+
 function setupEvents(){
- $("createRoomBtn").onclick=()=>showScreen("setup");$("joinRoomBtn").onclick=()=>showScreen("join");
- $("confirmCreate").onclick=createRoom;$("confirmJoin").onclick=joinRoom;
- $("startLabBtn").onclick=startLab;$("copyCode").onclick=()=>navigator.clipboard?.writeText(roomData?.code||roomId).then(()=>toast("초대 코드를 복사했습니다.")).catch(()=>toast("코드 복사에 실패했습니다."));
- document.querySelectorAll("[data-back]").forEach(b=>b.onclick=()=>showScreen("hero"));
- $("dashBack").onclick=()=>{showScreen("dashboard");renderDashboard();};
- $("backDashboard").onclick=()=>{showScreen("dashboard");renderDashboard();};
+ $("createRoomBtn").onclick=()=>showScreen("setup");
+ $("joinRoomBtn").onclick=()=>showScreen("join");
+ $("confirmCreate").onclick=createRoom;
+ $("confirmJoin").onclick=joinRoom;
+ $("startLabBtn").onclick=startLab;
+
+ $("copyCode").onclick=()=>{
+  navigator.clipboard?.writeText(roomData?.code||roomId)
+   .then(()=>toast("초대 코드를 복사했습니다."))
+   .catch(()=>toast("코드 복사에 실패했습니다."));
+ };
+
+ document.querySelectorAll("[data-back]").forEach(b=>
+  b.onclick=()=>showScreen("hero")
+ );
+
+ $("dashBack").onclick=()=>{
+  showScreen("dashboard");renderDashboard();
+ };
+ $("backDashboard").onclick=()=>{
+  showScreen("dashboard");renderDashboard();
+ };
  $("leaveBtn").onclick=leaveRoom;
- $("shareReport").onclick=()=>{const txt=getReportText();navigator.clipboard?.writeText(txt).then(()=>toast("결과 요약을 복사했습니다.")).catch(()=>toast("복사할 수 없습니다."));};
- $("homeBrand").onclick=e=>{e.preventDefault();if(roomData){showScreen("dashboard");renderDashboard();}else showScreen("hero");};
+
+ $("shareReport").onclick=()=>{
+  const txt=getReportText();
+  navigator.clipboard?.writeText(txt)
+   .then(()=>toast("결과 요약을 복사했습니다."))
+   .catch(()=>toast("복사할 수 없습니다."));
+ };
+
+ $("homeBrand").onclick=e=>{
+  e.preventDefault();
+  if(roomData){showScreen("dashboard");renderDashboard();}
+  else showScreen("hero");
+ };
 }
-fillMbti();setupEvents();initFirebase();
+
+fillMbti();
+setupEvents();
+initFirebase();
